@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { QRCodeCanvas } from 'qrcode.react';
+import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import JsBarcode from 'jsbarcode';
 import { jsPDF } from 'jspdf';
 import { 
@@ -82,21 +82,27 @@ const DEFAULT_CONFIG: QRCodeConfig = {
   qrScale: 0.5
 };
 
-// Priority: Requested fonts -> System fonts -> Google fonts
-const FONTS = [
-  'Roboto',
-  'Arial',
-  'Times New Roman',
-  'Open Sans',
-  'Montserrat',
-  'Oswald',
-  'Playfair Display',
-  'Lato', 
-  'Segoe UI', 
-  'Courier New', 
-  'Verdana', 
-  'Georgia',
+const SYSTEM_FONTS = [
+  'Arial', 'Times New Roman', 'Courier New', 'Verdana', 'Georgia', 'Segoe UI', 'Helvetica', 'Tahoma', 'Trebuchet MS', 'Impact', 'Comic Sans MS'
 ];
+
+const GOOGLE_FONTS = [
+  'Roboto', 'Open Sans', 'Lato', 'Montserrat', 'Oswald', 'Source Sans Pro', 'Raleway', 'PT Sans', 'Merriweather', 'Noto Sans', 'Nunito', 'Concert One', 'Prompt', 'Work Sans', 'Fira Sans', 'Rubik', 'Mukta', 'Ubuntu', 'PT Serif', 'Inter', 'Playfair Display', 'Nunito Sans', 'Lora', 'Titillium Web', 'PT Sans Narrow', 'Noto Serif', 'Bitter', 'Dosis', 'Josefin Sans', 'Inconsolata', 'Anton', 'Cabin', 'Righteous', 'Lobster', 'Dancing Script', 'Pacifico', 'Indie Flower', 'Yanone Kaffeesatz', 'Fjalla One', 'Exo 2', 'Comfortaa', 'EB Garamond', 'Teko', 'Bree Serif', 'Asap', 'Varela Round', 'Crimson Text', 'Pathway Gothic One', 'Play', 'Cuprum', 'Amatic SC', 'Kreon', 'Rokkitt', 'News Cycle', 'Orbitron', 'Audiowide', 'Special Elite', 'Black Ops One', 'Creepster', 'Press Start 2P', 'Monoton', 'Bangers', 'Fredoka One', 'Carter One', 'Acme', 'Lilita One', 'Chewy', 'Permanent Marker', 'Caveat', 'Satisfy', 'Great Vibes', 'Sacramento', 'Cookie', 'Handlee', 'Kalam', 'Shadows Into Light', 'Patrick Hand', 'Amita', 'Berkshire Swash', 'Cinzel', 'Cormorant Garamond', 'Alegreya', 'Alegreya Sans', 'Source Serif Pro', 'Zilla Slab', 'Space Mono', 'VT323', 'Share Tech Mono', 'Cutive Mono', 'Courier Prime', 'Anonymous Pro', 'Fira Code', 'JetBrains Mono', 'IBM Plex Mono', 'IBM Plex Sans', 'IBM Plex Serif', 'Manrope', 'Quicksand', 'Poppins', 'Mulish', 'Jost', 'Outfit', 'Space Grotesk', 'Syne', 'Epilogue', 'DM Sans', 'DM Serif Display', 'Archivo', 'Archivo Black', 'Bebas Neue', 'Alfa Slab One', 'Russo One', 'Sigmar One', 'Titan One', 'Fugaz One', 'Paytone One', 'Changa One', 'Luckiest Guy', 'Bowlby One SC', 'Bungee', 'Bungee Inline', 'Bungee Shade', 'Monofett', 'Fascinate Inline', 'Ewert', 'Sancreek', 'Smokum', 'Rye', 'Shojumaru', 'Nosifer', 'Butcherman', 'Eater', 'Frijole', 'Metal Mania', 'Flavors', 'Uncial Antiqua', 'Kranky'
+].sort();
+
+const FONTS = [...SYSTEM_FONTS, ...GOOGLE_FONTS];
+
+const loadGoogleFont = (fontName: string) => {
+  if (SYSTEM_FONTS.includes(fontName)) return;
+  const fontId = `google-font-${fontName.replace(/\\s+/g, '-')}`;
+  if (!document.getElementById(fontId)) {
+    const link = document.createElement('link');
+    link.id = fontId;
+    link.rel = 'stylesheet';
+    link.href = `https://fonts.googleapis.com/css2?family=${fontName.replace(/\\s+/g, '+')}:wght@300;400;500;600;700;800;900&display=swap`;
+    document.head.appendChild(link);
+  }
+};
 
 const FONT_WEIGHTS = [
   { label: 'Light', value: '300' },
@@ -1160,6 +1166,14 @@ const Editor = ({
                  level={config.level}
                  includeMargin={false}
                />
+               <QRCodeSVG
+                 value={config.value}
+                 size={config.size} 
+                 fgColor={config.fgColor}
+                 bgColor="transparent"
+                 level={config.level}
+                 includeMargin={false}
+               />
              </div>
            )}
         </div>
@@ -1234,6 +1248,12 @@ export default function App() {
       return () => clearTimeout(timer);
     }
   }, [notification]);
+
+  // Load Google Fonts dynamically
+  useEffect(() => {
+    loadGoogleFont(config.renderTitleFont);
+    loadGoogleFont(config.codeFont);
+  }, [config.renderTitleFont, config.codeFont]);
 
   // --- Actions ---
 
@@ -1336,8 +1356,9 @@ export default function App() {
   };
 
   const generateCanvas = async (configToRender: QRCodeConfig): Promise<HTMLCanvasElement | null> => {
+    const hasBg = useBgImage && !!configToRender.bgImage;
     const canvasSize = configToRender.size;
-    const qrGroupWidth = canvasSize * configToRender.qrScale;
+    const qrGroupWidth = hasBg ? (canvasSize * configToRender.qrScale) : canvasSize;
     const internalMargin = qrGroupWidth * INTERNAL_MARGIN_RATIO;
     const maxContentWidth = qrGroupWidth - (internalMargin * 2);
     
@@ -1351,7 +1372,7 @@ export default function App() {
         try {
             // UPDATED: EAN-13 Checksum Calculation for Export
             let renderValue = configToRender.value;
-            if (configToRender.barcodeType === 'EAN13' && /^\d{12}$/.test(renderValue)) {
+            if (configToRender.barcodeType === 'EAN13' && /^\\d{12}$/.test(renderValue)) {
                  let sum = 0;
                  for(let i=0; i<12; i++) sum += parseInt(renderValue[i]) * (i % 2 === 0 ? 1 : 3);
                  const checksum = (10 - (sum % 10)) % 10;
@@ -1362,73 +1383,78 @@ export default function App() {
             // We will render text manually to support letterSpacing
             JsBarcode(tempCanvas, renderValue, { // Use renderValue here
                 format: configToRender.barcodeType as any,
-                width: 4, 
-                height: 200, 
+                width: 2, 
+                height: 80, 
                 displayValue: false, // Manual text rendering
                 margin: 0, 
+                lineColor: configToRender.fgColor,
+                background: 'transparent'
             });
             
             // Calculate dimensions
-            const barHeight = maxContentWidth * (tempCanvas.height / tempCanvas.width);
-            const textGap = configToRender.codeTextGap ?? 5; // Use configured gap
-            const fontSize = configToRender.codeFontSize;
-            const textHeight = fontSize * 1.2;
-
-            barcodeHeight = barHeight + textGap + textHeight;
-            
-            // Create a wrapper canvas for Bar + Text
-            const wrapperCanvas = document.createElement('canvas');
+            const baseFontSize = configToRender.codeFontSize || 20;
+            const baseTextGap = configToRender.codeTextGap ?? 5; // Use configured gap
+            const baseTextHeight = baseFontSize * 1.2;
             
             // Offset for EAN-13 first digit
             const isEAN13 = configToRender.barcodeType === 'EAN13' && renderValue.length === 13;
-            // Need scale factor to match maxContentWidth
-            const scaleFactor = maxContentWidth / tempCanvas.width;
-            
-            // EAN-13 specific spacing
-            // We scale the font size down slightly if it's too big relative to the bar width
-            const firstCharWidth = isEAN13 ? (fontSize * 0.7) : 0;
-            const barXOffset = isEAN13 ? firstCharWidth + 4 : 0;
-            
-            // Recalculate wrapper width to account for the offset
-            wrapperCanvas.width = maxContentWidth + barXOffset;
+            const baseFirstCharWidth = isEAN13 ? (baseFontSize * 0.7) : 0;
+            const baseBarXOffset = isEAN13 ? baseFirstCharWidth + 4 : 0;
+
+            const baseTotalWidth = tempCanvas.width + baseBarXOffset;
+            const baseTotalHeight = tempCanvas.height + baseTextGap + baseTextHeight;
+
+            barcodeHeight = maxContentWidth * (baseTotalHeight / baseTotalWidth);
+            const scale = maxContentWidth / baseTotalWidth;
+
+            // Create a wrapper canvas for Bar + Text at FINAL resolution for sharpness
+            const wrapperCanvas = document.createElement('canvas');
+            wrapperCanvas.width = maxContentWidth;
             wrapperCanvas.height = barcodeHeight;
             const ctxWrapper = wrapperCanvas.getContext('2d');
             
             if (ctxWrapper) {
+                const finalBarXOffset = baseBarXOffset * scale;
+                const finalBarWidth = tempCanvas.width * scale;
+                const finalBarHeight = tempCanvas.height * scale;
+                const finalFontSize = baseFontSize * scale;
+                const finalTextGap = baseTextGap * scale;
+
                 // Draw Bars
-                // Note: We need to draw the tempCanvas scaled to maxContentWidth
-                ctxWrapper.drawImage(tempCanvas, barXOffset, 0, maxContentWidth, barHeight);
+                ctxWrapper.drawImage(tempCanvas, finalBarXOffset, 0, finalBarWidth, finalBarHeight);
                 
                 // Draw Text
                 ctxWrapper.fillStyle = configToRender.fgColor;
-                ctxWrapper.font = `bold ${fontSize}px "${configToRender.codeFont}", monospace`;
+                ctxWrapper.font = `bold ${finalFontSize}px "${configToRender.codeFont}", monospace`;
                 ctxWrapper.textBaseline = 'top';
                 
+                const textY = finalBarHeight + finalTextGap;
+
                 if (isEAN13) {
                      // Group 1: First Digit (Floating left)
                     if (typeof ctxWrapper.letterSpacing !== 'undefined') ctxWrapper.letterSpacing = '0px';
                     ctxWrapper.textAlign = 'right';
-                    ctxWrapper.fillText(renderValue[0], barXOffset - 5, barHeight + textGap);
+                    ctxWrapper.fillText(renderValue[0], finalBarXOffset - (2 * scale), textY);
 
                     if (typeof ctxWrapper.letterSpacing !== 'undefined') {
-                        ctxWrapper.letterSpacing = `${configToRender.codeLetterSpacing || 0}px`;
+                        ctxWrapper.letterSpacing = `${(configToRender.codeLetterSpacing || 0) * scale}px`;
                     }
                     ctxWrapper.textAlign = 'center';
 
                     // Group 2: Digits 2-7
-                    const leftCenter = barXOffset + (maxContentWidth * 0.25);
-                    ctxWrapper.fillText(renderValue.substring(1, 7), leftCenter, barHeight + textGap);
+                    const leftCenter = finalBarXOffset + (finalBarWidth * 0.25);
+                    ctxWrapper.fillText(renderValue.substring(1, 7), leftCenter, textY);
 
                     // Group 3: Digits 8-13
-                    const rightCenter = barXOffset + (maxContentWidth * 0.75);
-                    ctxWrapper.fillText(renderValue.substring(7, 13), rightCenter, barHeight + textGap);
+                    const rightCenter = finalBarXOffset + (finalBarWidth * 0.75);
+                    ctxWrapper.fillText(renderValue.substring(7, 13), rightCenter, textY);
                 } else {
                     if (typeof ctxWrapper.letterSpacing !== 'undefined') {
-                        ctxWrapper.letterSpacing = `${configToRender.codeLetterSpacing || 0}px`;
+                        ctxWrapper.letterSpacing = `${(configToRender.codeLetterSpacing || 0) * scale}px`;
                     }
                     ctxWrapper.textAlign = 'center';
                     // Center within the visual bar area (ignoring potential left offset if not EAN13)
-                    ctxWrapper.fillText(renderValue, maxContentWidth / 2, barHeight + textGap);
+                    ctxWrapper.fillText(renderValue, maxContentWidth / 2, textY);
                 }
             }
             
@@ -1463,43 +1489,47 @@ export default function App() {
     const ctx = canvas.getContext('2d', { alpha: false });
     if (!ctx) return null;
 
-    canvas.width = canvasSize;
-    canvas.height = canvasSize;
+    if (hasBg) {
+        canvas.width = canvasSize;
+        canvas.height = canvasSize;
+    } else {
+        canvas.width = patchW;
+        canvas.height = patchH;
+    }
 
     // Background
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    if (hasBg) {
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    // Image Background
-    if (configToRender.bgImage) {
-      try {
-        const bgImg = await loadImage(configToRender.bgImage);
-        const ratioCanvas = canvas.width / canvas.height;
-        const ratioImg = bgImg.width / bgImg.height;
-        let drawScale = 1;
+        try {
+            const bgImg = await loadImage(configToRender.bgImage!);
+            const ratioCanvas = canvas.width / canvas.height;
+            const ratioImg = bgImg.width / bgImg.height;
+            let drawScale = 1;
 
-        if (configToRender.bgImageFit === 'cover') {
-          drawScale = ratioCanvas > ratioImg ? canvas.width / bgImg.width : canvas.height / bgImg.height;
-        } else {
-          drawScale = ratioCanvas > ratioImg ? canvas.height / bgImg.height : canvas.width / bgImg.width;
-        }
+            if (configToRender.bgImageFit === 'cover') {
+            drawScale = ratioCanvas > ratioImg ? canvas.width / bgImg.width : canvas.height / bgImg.height;
+            } else {
+            drawScale = ratioCanvas > ratioImg ? canvas.height / bgImg.height : canvas.width / bgImg.width;
+            }
 
-        const finalScale = drawScale * configToRender.bgImageScale;
-        const dw = bgImg.width * finalScale;
-        const dh = bgImg.height * finalScale;
-        const dx = (canvas.width - dw) / 2;
-        const dy = (canvas.height - dh) / 2;
+            const finalScale = drawScale * configToRender.bgImageScale;
+            const dw = bgImg.width * finalScale;
+            const dh = bgImg.height * finalScale;
+            const dx = (canvas.width - dw) / 2;
+            const dy = (canvas.height - dh) / 2;
 
-        ctx.save();
-        ctx.globalAlpha = configToRender.bgImageOpacity;
-        ctx.drawImage(bgImg, dx, dy, dw, dh);
-        ctx.restore();
-      } catch (e) { console.error("BG Error"); }
+            ctx.save();
+            ctx.globalAlpha = configToRender.bgImageOpacity;
+            ctx.drawImage(bgImg, dx, dy, dw, dh);
+            ctx.restore();
+        } catch (e) { console.error("BG Error"); }
     }
 
     // Safe Patch
-    const patchX = (canvas.width - patchW) / 2;
-    const patchY = (canvas.height - patchH) / 2;
+    const patchX = hasBg ? (canvas.width - patchW) / 2 : 0;
+    const patchY = hasBg ? (canvas.height - patchH) / 2 : 0;
     const radius = qrGroupWidth * 0.05;
 
     ctx.fillStyle = configToRender.bgColor;
@@ -1525,7 +1555,8 @@ export default function App() {
 
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(configToRender.renderTitle, canvas.width / 2, currentY);
+        const textX = hasBg ? (canvas.width / 2) : (patchW / 2);
+        ctx.fillText(configToRender.renderTitle, textX, currentY);
         
         // Reset Letter Spacing
         if (typeof ctx.letterSpacing !== 'undefined') {
@@ -1542,7 +1573,7 @@ export default function App() {
     } else if (barcodeImage) {
         // Draw the wrapper canvas (Bars + Text)
         // Wrapper canvas already includes offset logic
-        ctx.drawImage(barcodeImage, drawContentX, currentY);
+        ctx.drawImage(barcodeImage, drawContentX, currentY, maxContentWidth, barcodeHeight);
         currentY += barcodeHeight;
     }
 
@@ -1553,9 +1584,163 @@ export default function App() {
         ctx.font = `bold ${fontSize}px Lato, "Segoe UI", "Open Sans", sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.fillText(DISPLAY_TEXT, canvas.width / 2, currentY + bottomTextGap);
+        const textX = hasBg ? (canvas.width / 2) : (patchW / 2);
+        ctx.fillText(DISPLAY_TEXT, textX, currentY + bottomTextGap);
     }
     return canvas;
+  };
+
+  const generateSVGString = async (configToRender: QRCodeConfig): Promise<string> => {
+    const hasBg = useBgImage && !!configToRender.bgImage;
+    const canvasSize = configToRender.size;
+    const qrGroupWidth = hasBg ? (canvasSize * configToRender.qrScale) : canvasSize;
+    const internalMargin = qrGroupWidth * INTERNAL_MARGIN_RATIO;
+    const maxContentWidth = qrGroupWidth - (internalMargin * 2);
+    
+    let barcodeHeight = maxContentWidth;
+    let barcodeSvgContent = '';
+    let barcodeViewBox = '';
+
+    if (configToRender.barcodeType !== 'qrcode') {
+        const tempSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+        try {
+            let renderValue = configToRender.value;
+            if (configToRender.barcodeType === 'EAN13' && /^\\d{12}$/.test(renderValue)) {
+                 let sum = 0;
+                 for(let i=0; i<12; i++) sum += parseInt(renderValue[i]) * (i % 2 === 0 ? 1 : 3);
+                 const checksum = (10 - (sum % 10)) % 10;
+                 renderValue += checksum;
+            }
+
+            JsBarcode(tempSvg, renderValue, {
+                format: configToRender.barcodeType as any,
+                width: 2, 
+                height: 80, 
+                displayValue: false,
+                margin: 0,
+                lineColor: configToRender.fgColor,
+                background: 'transparent'
+            });
+            
+            const svgWidth = parseInt(tempSvg.getAttribute('width') || '0');
+            const svgHeight = parseInt(tempSvg.getAttribute('height') || '0');
+            
+            const fontSize = configToRender.codeFontSize || 20;
+            const textGap = configToRender.codeTextGap ?? 5;
+            const textHeight = fontSize * 1.2;
+            
+            const isEAN13 = configToRender.barcodeType === 'EAN13' && renderValue.length === 13;
+            const firstCharWidth = isEAN13 ? (fontSize * 0.7) : 0;
+            const barXOffset = isEAN13 ? firstCharWidth + 4 : 0;
+
+            const totalWidth = svgWidth + barXOffset;
+            const totalHeight = svgHeight + textGap + textHeight;
+
+            barcodeHeight = maxContentWidth * (totalHeight / totalWidth);
+            barcodeViewBox = `0 0 ${totalWidth} ${totalHeight}`;
+            
+            const paths = tempSvg.innerHTML;
+            
+            let textElements = '';
+            const textY = svgHeight + textGap + (fontSize * 0.8);
+            const fontFamily = configToRender.codeFont;
+            const letterSpacing = configToRender.codeLetterSpacing || 0;
+            
+            if (isEAN13) {
+                textElements += `<text x="${barXOffset - 2}" y="${textY}" font-family="${fontFamily}, monospace" font-size="${fontSize}" font-weight="bold" fill="${configToRender.fgColor}" text-anchor="end">${renderValue[0]}</text>`;
+                const leftCenter = barXOffset + (svgWidth * 0.25);
+                textElements += `<text x="${leftCenter}" y="${textY}" font-family="${fontFamily}, monospace" font-size="${fontSize}" font-weight="bold" fill="${configToRender.fgColor}" text-anchor="middle" letter-spacing="${letterSpacing}">${renderValue.substring(1, 7)}</text>`;
+                const rightCenter = barXOffset + (svgWidth * 0.75);
+                textElements += `<text x="${rightCenter}" y="${textY}" font-family="${fontFamily}, monospace" font-size="${fontSize}" font-weight="bold" fill="${configToRender.fgColor}" text-anchor="middle" letter-spacing="${letterSpacing}">${renderValue.substring(7, 13)}</text>`;
+            } else {
+                textElements += `<text x="${totalWidth / 2}" y="${textY}" font-family="${fontFamily}, monospace" font-size="${fontSize}" font-weight="bold" fill="${configToRender.fgColor}" text-anchor="middle" letter-spacing="${letterSpacing}">${renderValue}</text>`;
+            }
+            
+            barcodeSvgContent = `<g transform="translate(${barXOffset}, 0)">${paths}</g>${textElements}`;
+        } catch (e) { return ''; }
+    } else {
+        const qrSvgElement = exportCanvasRef.current?.querySelector('svg');
+        if (qrSvgElement) {
+            barcodeSvgContent = qrSvgElement.innerHTML;
+            barcodeViewBox = qrSvgElement.getAttribute('viewBox') || `0 0 ${maxContentWidth} ${maxContentWidth}`;
+        }
+    }
+
+    let titleHeight = 0;
+    let titleGap = 0;
+    const titleFontSize = configToRender.renderTitleSize * (canvasSize / 1024);
+    
+    if (configToRender.renderTitle) {
+       titleHeight = titleFontSize * 1.2;
+       titleGap = configToRender.renderTitleGap * (canvasSize / 1024);
+    }
+
+    const fontSize = configToRender.barcodeType === 'qrcode' ? qrGroupWidth * FONT_SIZE_RATIO : 0;
+    const bottomTextGap = configToRender.barcodeType === 'qrcode' ? qrGroupWidth * TEXT_GAP_RATIO : 0;
+    
+    const patchH = titleHeight + titleGap + barcodeHeight + bottomTextGap + fontSize + (internalMargin * 2);
+    const patchW = qrGroupWidth;
+    
+    const exportWidth = hasBg ? canvasSize : patchW;
+    const exportHeight = hasBg ? canvasSize : patchH;
+
+    const patchX = hasBg ? (canvasSize - patchW) / 2 : 0;
+    const patchY = hasBg ? (canvasSize - patchH) / 2 : 0;
+    const radius = qrGroupWidth * 0.05;
+
+    let svgString = `<svg xmlns="http://www.w3.org/2000/svg" width="${exportWidth}" height="${exportHeight}" viewBox="0 0 ${exportWidth} ${exportHeight}">`;
+    
+    if (hasBg) {
+        svgString += `<rect width="${canvasSize}" height="${canvasSize}" fill="#ffffff" />`;
+        try {
+            const bgImg = await loadImage(configToRender.bgImage!);
+            const ratioCanvas = canvasSize / canvasSize;
+            const ratioImg = bgImg.width / bgImg.height;
+            let drawScale = 1;
+
+            if (configToRender.bgImageFit === 'cover') {
+              drawScale = ratioCanvas > ratioImg ? canvasSize / bgImg.width : canvasSize / bgImg.height;
+            } else {
+              drawScale = ratioCanvas > ratioImg ? canvasSize / bgImg.height : canvasSize / bgImg.width;
+            }
+
+            const finalScale = drawScale * configToRender.bgImageScale;
+            const dw = bgImg.width * finalScale;
+            const dh = bgImg.height * finalScale;
+            const dx = (canvasSize - dw) / 2;
+            const dy = (canvasSize - dh) / 2;
+            
+            svgString += `<g opacity="${configToRender.bgImageOpacity}">
+                <image href="${configToRender.bgImage}" x="${dx}" y="${dy}" width="${dw}" height="${dh}" preserveAspectRatio="none" />
+            </g>`;
+        } catch (e) {}
+    }
+
+    svgString += `<rect x="${patchX}" y="${patchY}" width="${patchW}" height="${patchH}" rx="${radius}" ry="${radius}" fill="${configToRender.bgColor}" />`;
+
+    const drawContentX = patchX + internalMargin;
+    let currentY = patchY + internalMargin;
+
+    if (configToRender.renderTitle) {
+        const weight = configToRender.renderTitleWeight || 'bold';
+        const letterSpacing = configToRender.renderTitleLetterSpacing * (canvasSize/1024);
+        const textY = currentY + (titleFontSize * 0.8);
+        const textX = hasBg ? (canvasSize / 2) : (patchW / 2);
+        svgString += `<text x="${textX}" y="${textY}" font-family="${configToRender.renderTitleFont}, sans-serif" font-size="${titleFontSize}" font-weight="${weight}" fill="${configToRender.fgColor}" text-anchor="middle" letter-spacing="${letterSpacing}">${configToRender.renderTitle}</text>`;
+        currentY += titleHeight + titleGap;
+    }
+
+    svgString += `<svg x="${drawContentX}" y="${currentY}" width="${maxContentWidth}" height="${barcodeHeight}" viewBox="${barcodeViewBox}">${barcodeSvgContent}</svg>`;
+    currentY += barcodeHeight;
+
+    if (configToRender.barcodeType === 'qrcode') {
+        const textY = currentY + bottomTextGap + (fontSize * 0.8);
+        const textX = hasBg ? (canvasSize / 2) : (patchW / 2);
+        svgString += `<text x="${textX}" y="${textY}" font-family="Lato, 'Segoe UI', 'Open Sans', sans-serif" font-size="${fontSize}" font-weight="bold" fill="${configToRender.fgColor}" text-anchor="middle">Quét để truy cập</text>`;
+    }
+
+    svgString += `</svg>`;
+    return svgString;
   };
 
   const handleDownload = async (itemConfig: QRCodeConfig = config) => {
@@ -1570,30 +1755,37 @@ export default function App() {
     }
 
     try {
-      const canvas = await generateCanvas(itemConfig);
-      if (!canvas) throw new Error("Canvas generation failed");
-
       const filename = `smart-barcode-${itemConfig.barcodeType}-${Date.now()}`;
 
-      if (exportFormat === 'pdf') {
-          const pdf = new jsPDF({
-              orientation: 'portrait',
-              unit: 'px',
-              format: [canvas.width, canvas.height]
-          });
-          pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, canvas.width, canvas.height);
-          pdf.save(`${filename}.pdf`);
-      } else if (exportFormat === 'svg') {
+      if (exportFormat === 'svg') {
+          const svgString = await generateSVGString(itemConfig);
+          if (!svgString) throw new Error("SVG generation failed");
+          const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
           const link = document.createElement('a');
-          link.download = `${filename}.png`;
-          link.href = canvas.toDataURL('image/png');
+          link.download = `${filename}.svg`;
+          link.href = url;
           link.click();
+          URL.revokeObjectURL(url);
       } else {
-          const mimeType = exportFormat === 'png' ? 'image/png' : 'image/jpeg';
-          const link = document.createElement('a');
-          link.download = `${filename}.${exportFormat}`;
-          link.href = canvas.toDataURL(mimeType, 1.0);
-          link.click();
+          const canvas = await generateCanvas(itemConfig);
+          if (!canvas) throw new Error("Canvas generation failed");
+
+          if (exportFormat === 'pdf') {
+              const pdf = new jsPDF({
+                  orientation: 'portrait',
+                  unit: 'px',
+                  format: [canvas.width, canvas.height]
+              });
+              pdf.addImage(canvas.toDataURL('image/jpeg', 1.0), 'JPEG', 0, 0, canvas.width, canvas.height);
+              pdf.save(`${filename}.pdf`);
+          } else {
+              const mimeType = exportFormat === 'png' ? 'image/png' : 'image/jpeg';
+              const link = document.createElement('a');
+              link.download = `${filename}.${exportFormat}`;
+              link.href = canvas.toDataURL(mimeType, 1.0);
+              link.click();
+          }
       }
       showNotification(`Đã tải xuống ${exportFormat.toUpperCase()} thành công!`, 'success');
     } catch (e) {

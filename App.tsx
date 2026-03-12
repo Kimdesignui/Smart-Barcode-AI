@@ -1,3 +1,4 @@
+// Force git sync update
 import React, { useState, useEffect, useRef } from 'react';
 import { QRCodeCanvas, QRCodeSVG } from 'qrcode.react';
 import JsBarcode from 'jsbarcode';
